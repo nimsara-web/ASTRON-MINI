@@ -2,9 +2,11 @@
   "name": "astron-mini",
   "version": "1.0.0",
   "main": "index.js",
-  "scripts": { "start": "node index.js" },
+  "scripts": {
+    "start": "node index.js"
+  },
   "dependencies": {
-    "@whiskeysockets/baileys": "^7.0.0-rc.13"
+    "@whiskeysockets/baileys": "^7.0.0-rc.13",
     "mongoose": "^8.0.0",
     "pino": "^9.0.0",
     "qrcode-terminal": "^0.12.0",
