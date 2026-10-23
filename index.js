@@ -6,7 +6,7 @@ const path = require('path');
 const commands = require('./commands');
 
 // ==================== CONFIG ====================
-const MONGO_URL = "mongodb+srv://YOUR_USER:YOUR_PASS@cluster.mongodb.net/astron";
+const MONGO_URL = "mongodb+srv://nimora:NimoraMD2026@cluster0.pjilbw4.mongodb.net/?appName=Cluster0";
 const BOT_NAME = "ASTRON MINI";
 const OWNER_NAME = "Nimsara";
 const OWNER_NUMBER = "94784280074";
