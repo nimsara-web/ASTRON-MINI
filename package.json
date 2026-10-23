@@ -1,4 +1,3 @@
-// package.json
 {
   "name": "astron-mini",
   "version": "1.0.0",
@@ -10,6 +9,7 @@
     "pino": "^9.0.0",
     "qrcode-terminal": "^0.12.0",
     "translate-google": "^1.5.0",
+    "express": "^4.18.0",
     "axios": "^1.6.0"
   }
 }
