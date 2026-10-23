@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const pino = require('pino');
 const express = require('express');
 const path = require('path');
+const commands = require('./commands');
 
 // ==================== CONFIG ====================
 const MONGO_URL = "mongodb+srv://YOUR_USER:YOUR_PASS@cluster.mongodb.net/astron"; // <-- ඔයාගේ URL
