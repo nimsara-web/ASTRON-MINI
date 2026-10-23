@@ -6,17 +6,17 @@ const path = require('path');
 const commands = require('./commands');
 
 // ==================== CONFIG ====================
-const MONGO_URL = "mongodb+srv://YOUR_USER:YOUR_PASS@cluster.mongodb.net/astron"; // <-- ඔයාගේ URL
+const MONGO_URL = "mongodb+srv://YOUR_USER:YOUR_PASS@cluster.mongodb.net/astron";
 const BOT_NAME = "ASTRON MINI";
 const OWNER_NAME = "Nimsara";
 const OWNER_NUMBER = "94784280074";
 const HELP_NUMBER = "0784280074";
 const WATERMARK = "Created By Nimsara";
-const LOG_CHANNEL = "120363362308230584@newsletter"; // ඔයාගේ channel JID
-const CONNECT_IMAGE = "https://i.ibb.co/placeholder/astron.jpg";   // <-- IMAGE URL
-const CONNECT_VOICE = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"; // <-- VOICE URL
-const MENU_IMAGE = "https://i.ibb.co/placeholder/menu.jpg";        // <-- MENU IMAGE URL
-const MENU_VOICE = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"; // <-- MENU VOICE URL
+const LOG_CHANNEL = "120363362308230584@newsletter";
+const CONNECT_IMAGE = "https://i.ibb.co/placeholder/astron.jpg";
+const CONNECT_VOICE = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
+const MENU_IMAGE = "https://i.ibb.co/placeholder/menu.jpg";
+const MENU_VOICE = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3";
 
 // ==================== MESSAGE CACHE ====================
 const msgCache = new Map();
@@ -113,9 +113,7 @@ async function startBot() {
             });
             await sock.sendMessage(LOG_CHANNEL, { forward: cached, force: true });
           } catch (e) {}
-          await sock.sendMessage(from, {
-            text: `🗑️ *Deleted message recovered*\n\n_${WATERMARK}_`
-          });
+          await sock.sendMessage(from, { text: `🗑️ *Deleted message recovered*\n\n_${WATERMARK}_` });
           await sock.sendMessage(from, { forward: cached, force: true });
         }
       }
@@ -127,15 +125,9 @@ async function startBot() {
     const { id, participants, action } = update;
     for (const p of participants) {
       if (action === 'add') {
-        await sock.sendMessage(id, {
-          text: `👋 Welcome @${p.split('@')[0]}!\n\n_${WATERMARK}_`,
-          mentions: [p]
-        });
+        await sock.sendMessage(id, { text: `👋 Welcome @${p.split('@')[0]}!\n\n_${WATERMARK}_`, mentions: [p] });
       } else if (action === 'remove') {
-        await sock.sendMessage(id, {
-          text: `👋 Goodbye @${p.split('@')[0]}!\n\n_${WATERMARK}_`,
-          mentions: [p]
-        });
+        await sock.sendMessage(id, { text: `👋 Goodbye @${p.split('@')[0]}!\n\n_${WATERMARK}_`, mentions: [p] });
       }
     }
   });
@@ -150,13 +142,11 @@ async function startBot() {
       const isStatus = from === 'status@broadcast';
       const settings = await getSettings(sender);
 
-      // message cache (anti-delete සඳහා)
       if (!isStatus) {
         msgCache.set(msg.key.id, msg);
         if (msgCache.size > 500) msgCache.delete(msgCache.keys().next().value);
       }
 
-      // anti-view-once → owner DM
       if (msg.message?.viewOnceMessage || msg.message?.viewOnceMessageV2) {
         const once = msg.message.viewOnceMessage?.message || msg.message.viewOnceMessageV2?.message;
         const ownerJid = OWNER_NUMBER + "@s.whatsapp.net";
@@ -172,7 +162,6 @@ async function startBot() {
 
       const text = msg.message.conversation || msg.message.extendedTextMessage?.text || "";
 
-      // auto reply (command නොවෙන message වලට)
       if (!isStatus && settings.autoReply && !text.startsWith(settings.prefix)) {
         await sock.sendMessage(from, {
           text: `${settings.autoReplyText}\n📞 Help: ${HELP_NUMBER}\n\n_${WATERMARK}_`
@@ -188,7 +177,6 @@ async function startBot() {
       const qCtx = msg.message.extendedTextMessage?.contextInfo;
       const quoted = qCtx?.quotedMessage;
 
-      // ANTILINK (group)
       if (from.endsWith('@g.us') && text.includes('chat.whatsapp.com')) {
         try {
           const meta = await sock.groupMetadata(from);
@@ -205,15 +193,14 @@ async function startBot() {
         case 'menu': {
           const menu = `╭─「 *${BOT_NAME}* 」\n│ 👤 Owner: ${OWNER_NAME}\n│ 📞 Help: ${HELP_NUMBER}\n╰────────────\n\n` +
             `*⚙️ SETTINGS*\n• ${settings.prefix}autostatus on/off\n• ${settings.prefix}autoread on/off\n• ${settings.prefix}autocmdread on/off\n• ${settings.prefix}autoreply on/off\n• ${settings.prefix}mode private/public/group/inbox\n• ${settings.prefix}prefix <new>\n• ${settings.prefix}setautoreply <text>\n\n` +
-            `*🛠️ TOOLS*\n• ${settings.prefix}ping\n• ${settings.prefix}alive\n• ${settings.prefix}owner\n• ${settings.prefix}settings\n• ${settings.prefix}remsg (reply to deleted)\n• ${settings.prefix}forward <jid/link/number>\n• ${settings.prefix}translate <lang> (reply)\n• ${settings.prefix}statussave (reply to status)\n• ${settings.prefix}save (reply to media)\n• ${settings.prefix}vv (reply to view-once)\n• 👀 (reply to view-once)\n\n` +
+            `*🛠️ TOOLS*\n• ${settings.prefix}ping\n• ${settings.prefix}alive\n• ${settings.prefix}owner\n• ${settings.prefix}settings\n• ${settings.prefix}remsg\n• ${settings.prefix}forward <jid/link/number>\n• ${settings.prefix}translate <lang>\n• ${settings.prefix}statussave\n• ${settings.prefix}save\n• ${settings.prefix}vv\n• 👀\n\n` +
+            `*🎨 UTILS*\n• ${settings.prefix}sticker\n• ${settings.prefix}ai <q>\n• ${settings.prefix}weather <city>\n• ${settings.prefix}news\n• ${settings.prefix}play <song>\n• ${settings.prefix}img <query>\n• ${settings.prefix}qr <text>\n• ${settings.prefix}short <url>\n• ${settings.prefix}calc <expr>\n• ${settings.prefix}pass <len>\n• ${settings.prefix}time\n• ${settings.prefix}info\n• ${settings.prefix}tagall <msg>\n• ${settings.prefix}groupinfo\n\n` +
             `_${WATERMARK}_`;
           await sock.sendMessage(from, { image: { url: MENU_IMAGE }, caption: menu }, { quoted: msg });
           if (MENU_VOICE) await sock.sendMessage(from, { audio: { url: MENU_VOICE }, mimetype: 'audio/mp4', ptt: true }, { quoted: msg });
           break;
         }
-        case 'ping':
-          await reply(`🏓 Pong! ${Date.now() - msg.messageTimestamp * 1000}ms`);
-          break;
+        case 'ping': await reply(`🏓 Pong! ${Date.now() - msg.messageTimestamp * 1000}ms`); break;
         case 'alive': {
           const caption = `✨ *${BOT_NAME}* is Alive!\n\n👤 Owner: ${OWNER_NAME}\n📞 Help: ${HELP_NUMBER}\n⚡ Status: Online\n\n_${WATERMARK}_`;
           await sock.sendMessage(from, { image: { url: CONNECT_IMAGE }, caption }, { quoted: msg });
@@ -230,15 +217,7 @@ async function startBot() {
         }
         case 'settings': {
           const s = await getSettings(sender);
-          const txt = `⚙️ *YOUR SETTINGS*\n\n` +
-            `• Auto Status View: ${s.autoStatusView ? '✅ ON' : '❌ OFF'}\n` +
-            `• Auto Read: ${s.autoRead ? '✅ ON' : '❌ OFF'}\n` +
-            `• Auto Cmd Read: ${s.autoCmdRead ? '✅ ON' : '❌ OFF'}\n` +
-            `• Auto Reply: ${s.autoReply ? '✅ ON' : '❌ OFF'}\n` +
-            `• Bot Mode: ${s.botMode}\n` +
-            `• Prefix: ${s.prefix}\n` +
-            `• Owner: ${s.owner}\n\n_${WATERMARK}_`;
-          await reply(txt);
+          await reply(`⚙️ *YOUR SETTINGS*\n\n• Auto Status View: ${s.autoStatusView ? '✅ ON' : '❌ OFF'}\n• Auto Read: ${s.autoRead ? '✅ ON' : '❌ OFF'}\n• Auto Cmd Read: ${s.autoCmdRead ? '✅ ON' : '❌ OFF'}\n• Auto Reply: ${s.autoReply ? '✅ ON' : '❌ OFF'}\n• Bot Mode: ${s.botMode}\n• Prefix: ${s.prefix}\n• Owner: ${s.owner}`);
           break;
         }
         case 'prefix':
@@ -251,29 +230,17 @@ async function startBot() {
           settings.botMode = args[0]; await settings.save();
           await reply(`✅ Mode: ${args[0]}`);
           break;
-        case 'autostatus':
-          settings.autoStatusView = args[0] === 'on'; await settings.save();
-          await reply(`✅ Auto status view: ${args[0]}`);
-          break;
-        case 'autoread':
-          settings.autoRead = args[0] === 'on'; await settings.save();
-          await reply(`✅ Auto read: ${args[0]}`);
-          break;
-        case 'autocmdread':
-          settings.autoCmdRead = args[0] === 'on'; await settings.save();
-          await reply(`✅ Auto cmd read: ${args[0]}`);
-          break;
-        case 'autoreply':
-          settings.autoReply = args[0] === 'on'; await settings.save();
-          await reply(`✅ Auto reply: ${args[0]}`);
-          break;
+        case 'autostatus': settings.autoStatusView = args[0] === 'on'; await settings.save(); await reply(`✅ Auto status view: ${args[0]}`); break;
+        case 'autoread': settings.autoRead = args[0] === 'on'; await settings.save(); await reply(`✅ Auto read: ${args[0]}`); break;
+        case 'autocmdread': settings.autoCmdRead = args[0] === 'on'; await settings.save(); await reply(`✅ Auto cmd read: ${args[0]}`); break;
+        case 'autoreply': settings.autoReply = args[0] === 'on'; await settings.save(); await reply(`✅ Auto reply: ${args[0]}`); break;
         case 'setautoreply':
           if (!args.length) return reply("❌ Usage: .setautoreply <text>");
           settings.autoReplyText = args.join(' '); await settings.save();
           await reply(`✅ Auto reply text set`);
           break;
         case 'remsg': {
-          if (!quoted) return reply("❌ Deleted message එකකට reply කරලා .remsg දාන්න");
+          if (!quoted) return reply("❌ Deleted message එකකට reply කරලා .remsg");
           const qType = Object.keys(quoted)[0];
           const qContent = quoted[qType];
           if (qType === 'conversation') return reply(`📩 *Recovered:*\n${qContent}`);
@@ -282,7 +249,7 @@ async function startBot() {
           break;
         }
         case 'forward': {
-          if (!args[0]) return reply("❌ Usage: .forward <jid/link/number> (reply to msg)");
+          if (!args[0]) return reply("❌ Usage: .forward <jid/link/number>");
           if (!quoted) return reply("❌ Forward කරන්න message එකකට reply කරන්න");
           let target = args[0];
           if (target.includes('chat.whatsapp.com')) {
@@ -297,7 +264,7 @@ async function startBot() {
           break;
         }
         case 'translate': {
-          if (!args[0]) return reply("❌ Usage: .translate <lang> (reply)");
+          if (!args[0]) return reply("❌ Usage: .translate <lang>");
           if (!quoted) return reply("❌ Message එකකට reply කරන්න");
           const qText = quoted.conversation || quoted.extendedTextMessage?.text;
           if (!qText) return reply("❌ Text message එකකට reply කරන්න");
@@ -343,6 +310,20 @@ async function startBot() {
           } catch (e) { await reply(`❌ Failed: ${e.message}`); }
           break;
         }
+        case 'sticker': await commands.sticker(sock, msg, from, quoted, reply); break;
+        case 'ai': await commands.ai(sock, msg, from, args, reply); break;
+        case 'weather': await commands.weather(sock, msg, from, args, reply); break;
+        case 'news': await commands.news(sock, msg, from, reply); break;
+        case 'play': await commands.play(sock, msg, from, args, reply); break;
+        case 'img': await commands.img(sock, msg, from, args, reply); break;
+        case 'qr': await commands.qr(sock, msg, from, args, reply); break;
+        case 'short': await commands.short(sock, msg, from, args, reply); break;
+        case 'calc': await commands.calc(sock, msg, from, args, reply); break;
+        case 'pass': await commands.pass(sock, msg, from, args, reply); break;
+        case 'time': await commands.time(sock, msg, from, reply); break;
+        case 'info': await commands.info(sock, msg, from, reply); break;
+        case 'tagall': await commands.tagall(sock, msg, from, args, reply); break;
+        case 'groupinfo': await commands.groupinfo(sock, msg, from, reply); break;
       }
     }
   });
