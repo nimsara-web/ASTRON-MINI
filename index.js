@@ -1,4 +1,4 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, jidNormalizedUser } = require('baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, jidNormalizedUser } = require('@whiskeysockets/baileys');
 const mongoose = require('mongoose');
 const pino = require('pino');
 const express = require('express');
@@ -6,7 +6,7 @@ const path = require('path');
 const commands = require('./commands');
 
 // ==================== CONFIG ====================
-const MONGO_URL = "mongodb+srv://nimora:NimoraMD2026@cluster0.pjilbw4.mongodb.net/?appName=Cluster0";
+const MONGO_URL = "mongodb+srv://YOUR_USER:YOUR_PASS@cluster.mongodb.net/astron";
 const BOT_NAME = "ASTRON MINI";
 const OWNER_NAME = "Nimsara";
 const OWNER_NUMBER = "94784280074";
@@ -53,9 +53,17 @@ async function logToChannel(sock, msg, from, sender) {
   } catch (e) { console.log("Channel log error:", e.message); }
 }
 
-// ==================== START BOT ====================
+// ==================== BOT STATE ====================
 let sock = null;
+let pairingCode = null;      // website එකට පෙන්නන්න
+let isConnected = false;
+let botStarted = false;
+
+// ==================== START BOT ====================
 async function startBot() {
+  if (botStarted) return; // දෙපාරක් start වෙන්න එපා
+  botStarted = true;
+
   await mongoose.connect(MONGO_URL);
   console.log("✅ MongoDB connected");
 
@@ -70,32 +78,29 @@ async function startBot() {
     browser: ["Astron MINI", "Chrome", "1.0.0"]
   });
 
-  if (!sock.authState.creds.registered) {
-    const readline = require('readline');
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    rl.question("📱 WhatsApp number (947XXXXXXXX): ", async (num) => {
-      const code = await sock.requestPairingCode(num.replace(/[^0-9]/g, ''));
-      console.log(`🔑 PAIR CODE: ${code}`);
-      rl.close();
-    });
-  }
-
   sock.ev.on('creds.update', saveCreds);
 
   sock.ev.on('connection.update', async (u) => {
     const { connection, lastDisconnect } = u;
     if (connection === 'open') {
+      isConnected = true;
       console.log(`✅ ${BOT_NAME} connected!`);
       const ownerJid = OWNER_NUMBER + "@s.whatsapp.net";
-      await sock.sendMessage(ownerJid, {
-        image: { url: CONNECT_IMAGE },
-        caption: `*${BOT_NAME}* connected ✅\n\n👤 Owner: ${OWNER_NAME}\n📞 Help: ${HELP_NUMBER}\n\n_${WATERMARK}_`
-      });
-      await sock.sendMessage(ownerJid, { audio: { url: CONNECT_VOICE }, mimetype: 'audio/mp4', ptt: true });
+      try {
+        await sock.sendMessage(ownerJid, {
+          image: { url: CONNECT_IMAGE },
+          caption: `*${BOT_NAME}* connected ✅\n\n👤 Owner: ${OWNER_NAME}\n📞 Help: ${HELP_NUMBER}\n\n_${WATERMARK}_`
+        });
+        await sock.sendMessage(ownerJid, { audio: { url: CONNECT_VOICE }, mimetype: 'audio/mp4', ptt: true });
+      } catch (e) { console.log("Connect msg error:", e.message); }
     }
     if (connection === 'close') {
+      isConnected = false;
       const code = lastDisconnect?.error?.output?.statusCode;
-      if (code !== DisconnectReason.loggedOut) startBot();
+      if (code !== DisconnectReason.loggedOut) {
+        botStarted = false;
+        setTimeout(() => startBot(), 3000);
+      }
     }
   });
 
@@ -334,16 +339,48 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Pairing code API — website එකෙන් number එක එව්වම code එක return කරනවා
 app.post('/api/pair', async (req, res) => {
   const { number } = req.body;
   if (!number) return res.status(400).json({ error: "Number required" });
-  if (!sock) return res.status(500).json({ error: "Bot not initialized" });
+
   try {
-    const code = await sock.requestPairingCode(number.replace(/[^0-9]/g, ''));
-    res.json({ code });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    // Bot start නැත්නම් start කරන්න
+    if (!sock) await startBot();
+
+    // Already connected නම්
+    if (isConnected) {
+      return res.json({ message: "Bot already connected ✅", connected: true });
+    }
+
+    // Already registered නම් (session තියෙනවා)
+    if (sock.authState.creds.registered) {
+      return res.json({ message: "Session exists. Restarting...", connected: true });
+    }
+
+    // Pair code generate කරන්න
+    const cleanNumber = number.replace(/[^0-9]/g, '');
+    const code = await sock.requestPairingCode(cleanNumber);
+    pairingCode = code;
+    console.log(`🔑 PAIR CODE for ${cleanNumber}: ${code}`);
+
+    res.json({ code, number: cleanNumber });
+  } catch (e) {
+    console.error("Pair error:", e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
-app.listen(3000, () => console.log("🌐 Website: http://localhost:3000"));
+// Status API — website එකට connect වුණාද කියලා check කරන්න
+app.get('/api/status', (req, res) => {
+  res.json({
+    connected: isConnected,
+    registered: sock?.authState?.creds?.registered || false
+  });
+});
 
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => console.log(`🌐 Website running on port ${PORT}`));
+
+// Bot start කරන්න (pair code එක website එකෙන් එනකම් wait කරනවා)
 startBot();
