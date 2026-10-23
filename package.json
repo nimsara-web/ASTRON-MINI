@@ -4,7 +4,7 @@
   "main": "index.js",
   "scripts": { "start": "node index.js" },
   "dependencies": {
-    "@whiskeysockets/baileys": "^6.7.18",
+    "baileys": "github:itsliaaa/baileys",
     "mongoose": "^8.0.0",
     "pino": "^9.0.0",
     "qrcode-terminal": "^0.12.0",
