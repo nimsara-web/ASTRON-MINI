@@ -6,84 +6,49 @@
 <title>Astron MINI</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
-  body {
-    background: #0a0a0a; color: #fff; min-height: 100vh;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    overflow: hidden;
-  }
-  body::before {
-    content: ''; position: absolute; inset: 0;
-    background: radial-gradient(circle at 50% 50%, rgba(255,0,0,0.25), transparent 60%);
-    animation: pulse 3s ease-in-out infinite;
-  }
+  body { background: #0a0a0a; color: #fff; min-height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  body::before { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 50% 50%, rgba(255,0,0,0.25), transparent 60%); animation: pulse 3s ease-in-out infinite; }
   @keyframes pulse { 0%,100%{transform:scale(1);opacity:.6} 50%{transform:scale(1.15);opacity:1} }
-  .card {
-    position: relative; z-index: 2; background: rgba(20,20,20,0.9);
-    border: 1px solid rgba(255,0,0,0.4); border-radius: 20px;
-    padding: 30px; width: 90%; max-width: 420px;
-    box-shadow: 0 0 40px rgba(255,0,0,0.3);
-  }
+  .card { position: relative; z-index: 2; background: rgba(20,20,20,0.9); border: 1px solid rgba(255,0,0,0.4); border-radius: 20px; padding: 30px; width: 90%; max-width: 420px; box-shadow: 0 0 40px rgba(255,0,0,0.3); }
   h1 { text-align: center; color: #ff2b2b; text-shadow: 0 0 10px #ff2b2b; margin-bottom: 6px; }
   p.sub { text-align: center; color: #888; margin-bottom: 20px; font-size: 13px; }
   label { display: block; margin: 12px 0 6px; font-size: 13px; color: #ccc; }
-  input {
-    width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #333;
-    background: #111; color: #fff; outline: none;
-  }
+  input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #333; background: #111; color: #fff; outline: none; }
   input:focus { border-color: #ff2b2b; box-shadow: 0 0 8px rgba(255,0,0,0.5); }
   .logo-preview { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
   .logo-preview img { width: 50px; height: 50px; border-radius: 50%; border: 2px solid #ff2b2b; object-fit: cover; }
-  button {
-    width: 100%; margin-top: 18px; padding: 12px; border: none; border-radius: 10px;
-    background: linear-gradient(45deg, #ff2b2b, #b30000); color: #fff; font-weight: bold;
-    cursor: pointer; transition: .2s;
-  }
+  button { width: 100%; margin-top: 18px; padding: 12px; border: none; border-radius: 10px; background: linear-gradient(45deg, #ff2b2b, #b30000); color: #fff; font-weight: bold; cursor: pointer; transition: .2s; }
   button:hover { transform: scale(1.03); box-shadow: 0 0 20px rgba(255,0,0,0.7); }
   .code { margin-top: 15px; text-align: center; font-size: 22px; letter-spacing: 4px; color: #ff2b2b; text-shadow: 0 0 10px #ff2b2b; }
   .contact { margin-top: 20px; text-align: center; }
-  .contact a {
-    display: inline-block; padding: 10px 20px; border-radius: 30px;
-    background: #25D366; color: #fff; text-decoration: none; font-weight: bold;
-  }
+  .contact a { display: inline-block; padding: 10px 20px; border-radius: 30px; background: #25D366; color: #fff; text-decoration: none; font-weight: bold; }
 </style>
 </head>
 <body>
   <div class="card">
     <div class="logo-preview">
       <img id="logoImg" src="https://i.ibb.co/placeholder/astron.jpg" alt="logo">
-      <span id="logoUrlText" style="font-size:11px;color:#666;">Logo URL below</span>
+      <span style="font-size:11px;color:#666;">Logo URL below</span>
     </div>
-    <h1 id="title">Astron MINI</h1>
+    <h1>Astron MINI</h1>
     <p class="sub">Created By Nimsara</p>
-
     <label>Logo Image URL</label>
     <input id="logoUrl" placeholder="https://..." oninput="document.getElementById('logoImg').src=this.value">
-
     <label>MongoDB URL</label>
     <input id="mongoUrl" placeholder="mongodb+srv://...">
-
     <label>WhatsApp Number (947XXXXXXXX)</label>
     <input id="number" placeholder="94784280074">
-
     <button onclick="pair()">🔗 Get Pair Code</button>
     <div class="code" id="code"></div>
-
-    <div class="contact">
-      <a href="https://wa.me/94784280074" target="_blank">📞 Contact Owner</a>
-    </div>
+    <div class="contact"><a href="https://wa.me/94784280074" target="_blank">📞 Contact Owner</a></div>
   </div>
-
 <script>
 async function pair() {
   const number = document.getElementById('number').value;
   const codeEl = document.getElementById('code');
   codeEl.textContent = "⏳...";
   try {
-    const r = await fetch('/api/pair', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ number })
-    });
+    const r = await fetch('/api/pair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ number }) });
     const d = await r.json();
     codeEl.textContent = d.code ? "🔑 " + d.code : "❌ " + (d.error || "error");
   } catch (e) { codeEl.textContent = "❌ " + e.message; }
