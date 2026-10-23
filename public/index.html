@@ -15,44 +15,125 @@
   label { display: block; margin: 12px 0 6px; font-size: 13px; color: #ccc; }
   input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #333; background: #111; color: #fff; outline: none; }
   input:focus { border-color: #ff2b2b; box-shadow: 0 0 8px rgba(255,0,0,0.5); }
-  .logo-preview { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
-  .logo-preview img { width: 50px; height: 50px; border-radius: 50%; border: 2px solid #ff2b2b; object-fit: cover; }
   button { width: 100%; margin-top: 18px; padding: 12px; border: none; border-radius: 10px; background: linear-gradient(45deg, #ff2b2b, #b30000); color: #fff; font-weight: bold; cursor: pointer; transition: .2s; }
   button:hover { transform: scale(1.03); box-shadow: 0 0 20px rgba(255,0,0,0.7); }
-  .code { margin-top: 15px; text-align: center; font-size: 22px; letter-spacing: 4px; color: #ff2b2b; text-shadow: 0 0 10px #ff2b2b; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .code { margin-top: 15px; text-align: center; font-size: 22px; letter-spacing: 4px; color: #ff2b2b; text-shadow: 0 0 10px #ff2b2b; min-height: 30px; }
+  .status { margin-top: 12px; text-align: center; font-size: 14px; padding: 10px; border-radius: 8px; }
+  .status.ok { background: rgba(0,255,0,0.1); color: #4caf50; border: 1px solid #4caf50; }
+  .status.wait { background: rgba(255,193,7,0.1); color: #ffc107; border: 1px solid #ffc107; }
+  .status.err { background: rgba(255,0,0,0.1); color: #ff2b2b; border: 1px solid #ff2b2b; }
   .contact { margin-top: 20px; text-align: center; }
   .contact a { display: inline-block; padding: 10px 20px; border-radius: 30px; background: #25D366; color: #fff; text-decoration: none; font-weight: bold; }
+  .steps { font-size: 12px; color: #888; margin-top: 15px; line-height: 1.6; }
 </style>
 </head>
 <body>
   <div class="card">
-    <div class="logo-preview">
-      <img id="logoImg" src="https://i.ibb.co/placeholder/astron.jpg" alt="logo">
-      <span style="font-size:11px;color:#666;">Logo URL below</span>
-    </div>
     <h1>Astron MINI</h1>
     <p class="sub">Created By Nimsara</p>
-    <label>Logo Image URL</label>
-    <input id="logoUrl" placeholder="https://..." oninput="document.getElementById('logoImg').src=this.value">
-    <label>MongoDB URL</label>
-    <input id="mongoUrl" placeholder="mongodb+srv://...">
+
     <label>WhatsApp Number (947XXXXXXXX)</label>
-    <input id="number" placeholder="94784280074">
-    <button onclick="pair()">🔗 Get Pair Code</button>
+    <input id="number" placeholder="94784280074" type="tel">
+
+    <button id="pairBtn" onclick="pair()">🔗 Get Pair Code</button>
+
     <div class="code" id="code"></div>
+    <div id="statusBox"></div>
+
+    <div class="steps">
+      <b>Steps:</b><br>
+      1. Number එක type කරලා "Get Pair Code" ඔබන්න<br>
+      2. එන code එක WhatsApp → Linked Devices → Link with phone number එකේ දාන්න<br>
+      3. Connect වුණාම status එක ✅ වෙයි
+    </div>
+
     <div class="contact"><a href="https://wa.me/94784280074" target="_blank">📞 Contact Owner</a></div>
   </div>
+
 <script>
+let pollInterval = null;
+
 async function pair() {
-  const number = document.getElementById('number').value;
+  const number = document.getElementById('number').value.trim();
+  const btn = document.getElementById('pairBtn');
   const codeEl = document.getElementById('code');
-  codeEl.textContent = "⏳...";
+  const statusBox = document.getElementById('statusBox');
+
+  if (!number || number.length < 10) {
+    statusBox.className = "status err";
+    statusBox.textContent = "❌ Valid number එකක් දාන්න (947XXXXXXXX)";
+    return;
+  }
+
+  btn.disabled = true;
+  codeEl.textContent = "⏳ Generating...";
+  statusBox.className = "status wait";
+  statusBox.textContent = "⏳ Pair code generate වෙනවා...";
+
   try {
-    const r = await fetch('/api/pair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ number }) });
+    const r = await fetch('/api/pair', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ number })
+    });
     const d = await r.json();
-    codeEl.textContent = d.code ? "🔑 " + d.code : "❌ " + (d.error || "error");
-  } catch (e) { codeEl.textContent = "❌ " + e.message; }
+
+    if (d.code) {
+      codeEl.textContent = d.code;
+      statusBox.className = "status wait";
+      statusBox.textContent = "📱 දැන් WhatsApp එකේ Linked Devices → Link with phone number එකට මේ code එක දාන්න";
+      startPolling();
+    } else if (d.connected) {
+      codeEl.textContent = "✅";
+      statusBox.className = "status ok";
+      statusBox.textContent = "✅ Bot already connected!";
+    } else {
+      codeEl.textContent = "❌";
+      statusBox.className = "status err";
+      statusBox.textContent = "❌ " + (d.error || "Error");
+      btn.disabled = false;
+    }
+  } catch (e) {
+    codeEl.textContent = "❌";
+    statusBox.className = "status err";
+    statusBox.textContent = "❌ " + e.message;
+    btn.disabled = false;
+  }
 }
+
+function startPolling() {
+  if (pollInterval) clearInterval(pollInterval);
+  pollInterval = setInterval(async () => {
+    try {
+      const r = await fetch('/api/status');
+      const d = await r.json();
+      if (d.connected) {
+        document.getElementById('code').textContent = "✅";
+        const s = document.getElementById('statusBox');
+        s.className = "status ok";
+        s.textContent = "✅ Bot connected successfully!";
+        document.getElementById('pairBtn').disabled = false;
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+    } catch (e) {}
+  }, 3000);
+}
+
+// Page load වෙද්දී status check කරන්න
+window.onload = async () => {
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    if (d.connected) {
+      document.getElementById('code').textContent = "✅";
+      const s = document.getElementById('statusBox');
+      s.className = "status ok";
+      s.textContent = "✅ Bot already connected!";
+    }
+  } catch (e) {}
+};
 </script>
 </body>
 </html>
