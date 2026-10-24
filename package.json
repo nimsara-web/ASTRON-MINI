@@ -6,7 +6,7 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "ourin-baileys": "^9.0.21",
+    "@kelvdra/baileys": "^1.0.7",
     "mongoose": "^8.0.0",
     "pino": "^9.0.0",
     "qrcode-terminal": "^0.12.0",
