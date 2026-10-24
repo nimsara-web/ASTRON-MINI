@@ -1,4 +1,4 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestWaWebVersion, jidNormalizedUser } = require('baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestWaWebVersion, jidNormalizedUser, normalizeMessageContent, downloadMediaMessage, getContentType } = require('baileys');
 const mongoose = require('mongoose');
 const pino = require('pino');
 const express = require('express');
@@ -13,10 +13,11 @@ const OWNER_NUMBER = "94784280074";
 const HELP_NUMBER = "0784280074";
 const WATERMARK = "Created By Nimsara";
 const LOG_CHANNEL = "120363362308230584@newsletter";
-const CONNECT_IMAGE = "https://i.ibb.co/placeholder/astron.jpg";
-const CONNECT_VOICE = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
-const MENU_IMAGE = "https://i.ibb.co/placeholder/menu.jpg";
-const MENU_VOICE = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3";
+// 👇 ඔයාගේ image/voice URLs මෙතන දාන්න
+const CONNECT_IMAGE = "YOUR_IMAGE_URL_HERE";
+const CONNECT_VOICE = "YOUR_VOICE_URL_HERE";
+const MENU_IMAGE = "YOUR_MENU_IMAGE_URL_HERE";
+const MENU_VOICE = "YOUR_MENU_VOICE_URL_HERE";
 
 // ==================== MESSAGE CACHE ====================
 const msgCache = new Map();
@@ -40,8 +41,7 @@ async function getSettings(jid) {
   return s;
 }
 
-// ==================== CHANNEL CONTEXT (forwarded from channel) ====================
-// මේකෙන් message එක channel එකකින් forward වුණා වගේ පෙන්නනවා
+// ==================== CHANNEL CONTEXT ====================
 function getChannelContext() {
   return {
     forwardingScore: 999,
@@ -54,15 +54,15 @@ function getChannelContext() {
   };
 }
 
-// ==================== SAFE SEND HELPER ====================
+// ==================== SAFE SEND ====================
 async function safeSend(sock, jid, content, options = {}) {
   try {
     return await sock.sendMessage(jid, content, options);
   } catch (e) {
-    console.log(`⚠️ SafeSend failed to ${jid}:`, e.message);
+    console.log(`⚠️ SafeSend failed:`, e.message);
     try {
       if (content.image || content.video || content.audio || content.document || content.sticker) {
-        return await sock.sendMessage(jid, { text: content.caption || "📎 Media" }, options);
+        return await sock.sendMessage(jid, { text: content.caption || "📎 Media", contextInfo: getChannelContext() }, options);
       }
     } catch (e2) {}
     return null;
@@ -74,6 +74,7 @@ let sock = null;
 let pairingCode = null;
 let isConnected = false;
 let botStarted = false;
+const deletedMsgs = new Map(); // deleted message recover සඳහා
 
 // ==================== START BOT ====================
 async function startBot() {
@@ -91,7 +92,6 @@ async function startBot() {
     version = waVersion.version || waVersion;
     console.log(`📱 WA Version: ${Array.isArray(version) ? version.join('.') : version}`);
   } catch (e) {
-    console.log("⚠️ Version fetch failed, using fallback:", e.message);
     version = [2, 3000, 1042466098];
   }
 
@@ -116,24 +116,18 @@ async function startBot() {
           image: { url: CONNECT_IMAGE },
           caption: `*${BOT_NAME}* connected ✅\n\n👤 Owner: ${OWNER_NAME}\n📞 Help: ${HELP_NUMBER}\n\n_${WATERMARK}_`
         });
-      } catch (imgErr) {
-        console.log("Image failed, sending text:", imgErr.message);
-        try {
-          await sock.sendMessage(ownerJid, {
-            text: `*${BOT_NAME}* connected ✅\n\n👤 Owner: ${OWNER_NAME}\n📞 Help: ${HELP_NUMBER}\n\n_${WATERMARK}_`
-          });
-        } catch (e) {}
+      } catch (e) {
+        await sock.sendMessage(ownerJid, { text: `*${BOT_NAME}* connected ✅\n\n_${WATERMARK}_` }).catch(() => {});
       }
-      try {
-        await sock.sendMessage(ownerJid, { audio: { url: CONNECT_VOICE }, mimetype: 'audio/mp4', ptt: true });
-      } catch (e) { console.log("Voice failed:", e.message); }
+      if (CONNECT_VOICE) {
+        await sock.sendMessage(ownerJid, { audio: { url: CONNECT_VOICE }, mimetype: 'audio/mp4', ptt: true }).catch(() => {});
+      }
     }
     if (connection === 'close') {
       isConnected = false;
       const code = lastDisconnect?.error?.output?.statusCode;
-      console.log(`⚠️ Connection closed. Code: ${code}`);
+      console.log(`⚠️ Closed. Code: ${code}`);
       if (code === DisconnectReason.restartRequired || code === 515) {
-        console.log("🔄 515 restart, waiting...");
         setTimeout(() => { botStarted = false; startBot(); }, 3000);
       } else if (code !== DisconnectReason.loggedOut) {
         botStarted = false;
@@ -142,19 +136,15 @@ async function startBot() {
     }
   });
 
-  // ====== ANTI-DELETE (SAFE) ======
+  // ====== ANTI-DELETE (AUTO SEND එපා - cache විතරයි) ======
   sock.ev.on('messages.update', async (updates) => {
     for (const u of updates) {
       if (u.update?.message === null || u.update?.messageStubType === 1) {
         const cached = msgCache.get(u.key.id);
         if (cached && cached.message) {
-          const from = cached.key.remoteJid;
-          try {
-            await sock.sendMessage(from, { text: `🗑️ *Deleted message recovered*\n\n_${WATERMARK}_` });
-          } catch (e) {}
-          try {
-            await sock.sendMessage(from, { forward: cached, force: true });
-          } catch (e) { console.log("Anti-del forward error:", e.message); }
+          // 👇 Auto-send කරන්නේ නෑ. cache එකේ තියනවා, .remsg එකෙන් ගන්නවා
+          deletedMsgs.set(u.key.id, { msg: cached, from: cached.key.remoteJid, sender: jidNormalizedUser(cached.key.participant || cached.key.remoteJid) });
+          // cache එකේ තියෙන්න දෙන්න
         }
       }
     }
@@ -165,11 +155,8 @@ async function startBot() {
     const { id, participants, action } = update;
     for (const p of participants) {
       try {
-        if (action === 'add') {
-          await sock.sendMessage(id, { text: `👋 Welcome @${p.split('@')[0]}!\n\n_${WATERMARK}_`, mentions: [p] });
-        } else if (action === 'remove') {
-          await sock.sendMessage(id, { text: `👋 Goodbye @${p.split('@')[0]}!\n\n_${WATERMARK}_`, mentions: [p] });
-        }
+        if (action === 'add') await sock.sendMessage(id, { text: `👋 Welcome @${p.split('@')[0]}!\n\n_${WATERMARK}_`, mentions: [p] });
+        else if (action === 'remove') await sock.sendMessage(id, { text: `👋 Goodbye @${p.split('@')[0]}!\n\n_${WATERMARK}_`, mentions: [p] });
       } catch (e) {}
     }
   });
@@ -185,22 +172,39 @@ async function startBot() {
         const isStatus = from === 'status@broadcast';
         const settings = await getSettings(sender);
 
+        // 👇 BOT MODE CHECK
+        if (settings.botMode === 'private' && sender !== OWNER_NUMBER + "@s.whatsapp.net") {
+          continue; // private mode එකේ owner ට විතරයි
+        }
+        if (settings.botMode === 'group' && !from.endsWith('@g.us')) {
+          continue; // group mode එකේ group වලට විතරයි
+        }
+        if (settings.botMode === 'inbox' && from.endsWith('@g.us')) {
+          continue; // inbox mode එකේ DM වලට විතරයි
+        }
+
         if (!isStatus) {
           msgCache.set(msg.key.id, msg);
           if (msgCache.size > 500) msgCache.delete(msgCache.keys().next().value);
         }
 
-        // Anti view-once (safe)
+        // 👀 View-once silent download to owner
+        const normalized = normalizeMessageContent(msg.message);
         if (msg.message?.viewOnceMessage || msg.message?.viewOnceMessageV2) {
-          const once = msg.message.viewOnceMessage?.message || msg.message.viewOnceMessageV2?.message;
-          const ownerJid = OWNER_NUMBER + "@s.whatsapp.net";
           try {
-            await sock.sendMessage(ownerJid, { text: `👀 *View-once captured*\n👤 From: ${sender}\n\n_${WATERMARK}_` });
-            await sock.sendMessage(ownerJid, { forward: { key: msg.key, message: once }, force: true });
-          } catch (e) { console.log("View-once error:", e.message); }
+            const onceMsg = { ...msg, message: normalized };
+            const buffer = await downloadMediaMessage(onceMsg, 'buffer', {}, { logger: pino({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage });
+            const type = getContentType(normalized);
+            const ownerJid = OWNER_NUMBER + "@s.whatsapp.net";
+            if (type === 'imageMessage') {
+              await sock.sendMessage(ownerJid, { image: buffer, caption: `👀 View-once from ${sender}\n\n_${WATERMARK}_` });
+            } else if (type === 'videoMessage') {
+              await sock.sendMessage(ownerJid, { video: buffer, caption: `👀 View-once from ${sender}\n\n_${WATERMARK}_` });
+            } else if (type === 'audioMessage') {
+              await sock.sendMessage(ownerJid, { audio: buffer, mimetype: 'audio/mp4', ptt: true });
+            }
+          } catch (e) { console.log("View-once download error:", e.message); }
         }
-
-        // ❌ logToChannel අයින් කළා - channel එකට auto message යන්නේ නෑ
 
         if (isStatus && settings.autoStatusView) {
           try { await sock.readMessages([msg.key]); } catch (e) {}
@@ -209,16 +213,13 @@ async function startBot() {
           try { await sock.readMessages([msg.key]); } catch (e) {}
         }
 
-        const text = msg.message.conversation || msg.message.extendedTextMessage?.text || "";
+        const text = normalized.conversation || normalized.extendedTextMessage?.text || "";
 
         if (!isStatus && settings.autoReply && !text.startsWith(settings.prefix)) {
-          try {
-            await sock.sendMessage(from, {
-              text: `${settings.autoReplyText}\n📞 Help: ${HELP_NUMBER}\n\n_${WATERMARK}_`
-            }, { quoted: msg });
-          } catch (e) {}
+          await sock.sendMessage(from, { text: `${settings.autoReplyText}\n📞 Help: ${HELP_NUMBER}\n\n_${WATERMARK}_`, contextInfo: getChannelContext() }, { quoted: msg }).catch(() => {});
         }
 
+        // 👇 PREFIX CHECK
         if (!text.startsWith(settings.prefix)) continue;
         if (settings.autoCmdRead) {
           try { await sock.readMessages([msg.key]); } catch (e) {}
@@ -226,17 +227,10 @@ async function startBot() {
 
         const cmd = text.slice(settings.prefix.length).trim().split(/ +/)[0].toLowerCase();
         const args = text.slice(settings.prefix.length).trim().split(/ +/).slice(1);
-        
-        // 👇 REPLY වලට channel context එක දාන්න - channel link එක පෙන්නන්න
-        const reply = (t) => sock.sendMessage(from, { 
-          text: t + `\n\n_${WATERMARK}_`,
-          contextInfo: getChannelContext()
-        }, { quoted: msg });
-        
-        const qCtx = msg.message.extendedTextMessage?.contextInfo;
+        const reply = (t) => sock.sendMessage(from, { text: t + `\n\n_${WATERMARK}_`, contextInfo: getChannelContext() }, { quoted: msg }).catch(() => {});
+        const qCtx = normalized.extendedTextMessage?.contextInfo;
         const quoted = qCtx?.quotedMessage;
 
-        // Antilink
         if (from.endsWith('@g.us') && text.includes('chat.whatsapp.com')) {
           try {
             const meta = await sock.groupMetadata(from);
@@ -251,47 +245,24 @@ async function startBot() {
 
         switch (cmd) {
           case 'menu': {
-            // 👇 ඔයා කියන commands විතරක්
             const menu = `╭─「 *${BOT_NAME}* 」\n│ 👤 Owner: ${OWNER_NAME}\n│ 📞 Help: ${HELP_NUMBER}\n╰────────────\n\n` +
               `*⚙️ SETTINGS*\n• ${settings.prefix}autostatus on/off\n• ${settings.prefix}autoread on/off\n• ${settings.prefix}autocmdread on/off\n• ${settings.prefix}autoreply on/off\n• ${settings.prefix}mode private/public/group/inbox\n• ${settings.prefix}prefix <new>\n\n` +
-              `*🛠️ TOOLS*\n• ${settings.prefix}ping\n• ${settings.prefix}alive\n• ${settings.prefix}owner\n• ${settings.prefix}settings\n• ${settings.prefix}remsg\n• ${settings.prefix}forward <jid/link/number>\n• ${settings.prefix}translate <lang>\n• ${settings.prefix}statussave\n• ${settings.prefix}save\n• ${settings.prefix}vv\n• 👀\n\n` +
+              `*🛠️ TOOLS*\n• ${settings.prefix}ping\n• ${settings.prefix}alive\n• ${settings.prefix}owner\n• ${settings.prefix}settings\n• ${settings.prefix}remsg (reply to deleted)\n• ${settings.prefix}forward <jid/link/number>\n• ${settings.prefix}translate <lang>\n• ${settings.prefix}statussave\n• ${settings.prefix}save (reply to status/media)\n• ${settings.prefix}vv (reply to view-once)\n• 👀 (reply to view-once)\n\n` +
               `_${WATERMARK}_`;
-            await safeSend(sock, from, { 
-              image: { url: MENU_IMAGE }, 
-              caption: menu,
-              contextInfo: getChannelContext()
-            }, { quoted: msg });
-            if (MENU_VOICE) await safeSend(sock, from, { 
-              audio: { url: MENU_VOICE }, 
-              mimetype: 'audio/mp4', 
-              ptt: true,
-              contextInfo: getChannelContext()
-            }, { quoted: msg });
+            await safeSend(sock, from, { image: { url: MENU_IMAGE }, caption: menu, contextInfo: getChannelContext() }, { quoted: msg });
+            if (MENU_VOICE) await safeSend(sock, from, { audio: { url: MENU_VOICE }, mimetype: 'audio/mp4', ptt: true, contextInfo: getChannelContext() }, { quoted: msg });
             break;
           }
           case 'ping': await reply(`🏓 Pong! ${Date.now() - msg.messageTimestamp * 1000}ms`); break;
           case 'alive': {
             const caption = `✨ *${BOT_NAME}* is Alive!\n\n👤 Owner: ${OWNER_NAME}\n📞 Help: ${HELP_NUMBER}\n⚡ Status: Online\n\n_${WATERMARK}_`;
-            await safeSend(sock, from, { 
-              image: { url: CONNECT_IMAGE }, 
-              caption,
-              contextInfo: getChannelContext()
-            }, { quoted: msg });
-            if (CONNECT_VOICE) await safeSend(sock, from, { 
-              audio: { url: CONNECT_VOICE }, 
-              mimetype: 'audio/mp4', 
-              ptt: true,
-              contextInfo: getChannelContext()
-            }, { quoted: msg });
+            await safeSend(sock, from, { image: { url: CONNECT_IMAGE }, caption, contextInfo: getChannelContext() }, { quoted: msg });
+            if (CONNECT_VOICE) await safeSend(sock, from, { audio: { url: CONNECT_VOICE }, mimetype: 'audio/mp4', ptt: true, contextInfo: getChannelContext() }, { quoted: msg });
             break;
           }
           case 'owner': {
             const vcard = `BEGIN:VCARD\nVERSION:3.0\nFN:${OWNER_NAME}\nTEL;type=CELL;type=VOICE;waid=${OWNER_NUMBER}:+${OWNER_NUMBER}\nEND:VCARD`;
-            await safeSend(sock, from, {
-              contacts: { displayName: OWNER_NAME, contacts: [{ vcard }] },
-              caption: `👤 *Owner:* ${OWNER_NAME}\n📞 ${HELP_NUMBER}\n\n_${WATERMARK}_`,
-              contextInfo: getChannelContext()
-            }, { quoted: msg });
+            await safeSend(sock, from, { contacts: { displayName: OWNER_NAME, contacts: [{ vcard }] }, caption: `👤 *Owner:* ${OWNER_NAME}\n📞 ${HELP_NUMBER}\n\n_${WATERMARK}_`, contextInfo: getChannelContext() }, { quoted: msg });
             break;
           }
           case 'settings': {
@@ -299,26 +270,35 @@ async function startBot() {
             await reply(`⚙️ *YOUR SETTINGS*\n\n• Auto Status View: ${s.autoStatusView ? '✅ ON' : '❌ OFF'}\n• Auto Read: ${s.autoRead ? '✅ ON' : '❌ OFF'}\n• Auto Cmd Read: ${s.autoCmdRead ? '✅ ON' : '❌ OFF'}\n• Auto Reply: ${s.autoReply ? '✅ ON' : '❌ OFF'}\n• Bot Mode: ${s.botMode}\n• Prefix: ${s.prefix}\n• Owner: ${s.owner}`);
             break;
           }
-          case 'prefix':
+          case 'prefix': {
             if (!args[0]) return reply("❌ Usage: .prefix <new>");
-            settings.prefix = args[0]; await settings.save();
-            await reply(`✅ Prefix: ${args[0]}`);
+            // 👇 prefix change - owner ට විතරයි
+            if (sender !== OWNER_NUMBER + "@s.whatsapp.net") return reply("❌ Only owner can change prefix");
+            settings.prefix = args[0];
+            await settings.save();
+            await reply(`✅ Prefix changed to: ${args[0]}`);
             break;
-          case 'mode':
+          }
+          case 'mode': {
             if (!['private','public','group','inbox'].includes(args[0])) return reply("❌ private/public/group/inbox");
-            settings.botMode = args[0]; await settings.save();
+            if (sender !== OWNER_NUMBER + "@s.whatsapp.net") return reply("❌ Only owner can change mode");
+            settings.botMode = args[0];
+            await settings.save();
             await reply(`✅ Mode: ${args[0]}`);
             break;
+          }
           case 'autostatus': settings.autoStatusView = args[0] === 'on'; await settings.save(); await reply(`✅ Auto status view: ${args[0]}`); break;
           case 'autoread': settings.autoRead = args[0] === 'on'; await settings.save(); await reply(`✅ Auto read: ${args[0]}`); break;
           case 'autocmdread': settings.autoCmdRead = args[0] === 'on'; await settings.save(); await reply(`✅ Auto cmd read: ${args[0]}`); break;
           case 'autoreply': settings.autoReply = args[0] === 'on'; await settings.save(); await reply(`✅ Auto reply: ${args[0]}`); break;
           case 'remsg': {
+            // 👇 .remsg - deleted message recover (cache එකෙන්)
             if (!quoted) return reply("❌ Deleted message එකකට reply කරලා .remsg");
             const qType = Object.keys(quoted)[0];
             const qContent = quoted[qType];
             if (qType === 'conversation') return reply(`📩 *Recovered:*\n${qContent}`);
             if (qType === 'extendedTextMessage') return reply(`📩 *Recovered:*\n${qContent.text}`);
+            // media forward
             try {
               await sock.sendMessage(from, { forward: { key: { remoteJid: from, id: qCtx.stanzaId, fromMe: false }, message: quoted }, force: true });
             } catch (e) { await reply(`❌ Failed: ${e.message}`); }
@@ -360,33 +340,50 @@ async function startBot() {
             break;
           }
           case 'save': {
-            if (!quoted) return reply("❌ Media message එකකට reply කරලා .save");
-            const ownerJid = OWNER_NUMBER + "@s.whatsapp.net";
+            // 👇 .save - status/media save
+            if (!quoted) return reply("❌ Media/status message එකකට reply කරලා .save");
             try {
-              await sock.sendMessage(ownerJid, { forward: { key: { remoteJid: from, id: qCtx.stanzaId, fromMe: false }, message: quoted }, force: true });
-              await reply("✅ Saved to owner DM");
+              const targetJid = qCtx?.remoteJid || from;
+              await sock.sendMessage(sender, { forward: { key: { remoteJid: targetJid, id: qCtx.stanzaId, fromMe: false }, message: quoted }, force: true });
+              await reply("✅ Saved to DM");
             } catch (e) { await reply(`❌ Failed: ${e.message}`); }
             break;
           }
           case 'vv': {
+            // 👇 .vv - view-once unwrap කරලා normal media විදියට එවන්න
             if (!quoted) return reply("❌ View-once message එකකට reply කරලා .vv");
-            const once = quoted.viewOnceMessage?.message || quoted.viewOnceMessageV2?.message || quoted;
             try {
-              await sock.sendMessage(from, { forward: { key: { remoteJid: from, id: qCtx.stanzaId, fromMe: false }, message: once }, force: true });
-              await reply("✅ View-once converted");
+              const onceContent = quoted.viewOnceMessage?.message || quoted.viewOnceMessageV2?.message || quoted;
+              const normalizedOnce = normalizeMessageContent(onceContent);
+              const onceType = getContentType(normalizedOnce);
+              // forward normal message විදියට
+              await sock.sendMessage(from, { forward: { key: { remoteJid: from, id: qCtx.stanzaId, fromMe: false }, message: normalizedOnce }, force: true });
+              await reply(`✅ View-once ${onceType?.replace('Message','') || 'media'} converted`);
             } catch (e) { await reply(`❌ Failed: ${e.message}`); }
             break;
           }
           case '👀': {
+            // 👀 view-once - owner ට silent download
             if (!quoted) return reply("❌ View-once message එකකට reply කරලා 👀");
-            const onceType = quoted.viewOnceMessage?.message || quoted.viewOnceMessageV2?.message || quoted;
             try {
-              await sock.sendMessage(sender, { forward: { key: { remoteJid: from, id: qCtx.stanzaId, fromMe: false }, message: onceType }, force: true });
-              await reply("✅ View-once sent to DM");
+              const onceContent = quoted.viewOnceMessage?.message || quoted.viewOnceMessageV2?.message || quoted;
+              const normalizedOnce = normalizeMessageContent(onceContent);
+              const onceType = getContentType(normalizedOnce);
+              const onceMsg = { ...msg, message: normalizedOnce };
+              const buffer = await downloadMediaMessage(onceMsg, 'buffer', {}, { logger: pino({ level: 'silent' }), reuploadRequest: sock.updateMediaMessage });
+              const ownerJid = OWNER_NUMBER + "@s.whatsapp.net";
+              if (onceType === 'imageMessage') {
+                await sock.sendMessage(ownerJid, { image: buffer, caption: `👀 View-once from ${sender}\n\n_${WATERMARK}_` });
+              } else if (onceType === 'videoMessage') {
+                await sock.sendMessage(ownerJid, { video: buffer, caption: `👀 View-once from ${sender}\n\n_${WATERMARK}_` });
+              } else if (onceType === 'audioMessage') {
+                await sock.sendMessage(ownerJid, { audio: buffer, mimetype: 'audio/mp4', ptt: true });
+              }
+              await reply("✅ View-once sent to your DM");
             } catch (e) { await reply(`❌ Failed: ${e.message}`); }
             break;
           }
-          // 👇 commands.js එකේ තියෙන commands
+          // commands.js
           case 'sticker': await commands.sticker(sock, msg, from, quoted, reply); break;
           case 'ai': await commands.ai(sock, msg, from, args, reply); break;
           case 'weather': await commands.weather(sock, msg, from, args, reply); break;
@@ -403,13 +400,13 @@ async function startBot() {
           case 'groupinfo': await commands.groupinfo(sock, msg, from, reply); break;
         }
       } catch (loopErr) {
-        console.log("⚠️ Message handler error:", loopErr.message);
+        console.log("⚠️ Handler error:", loopErr.message);
       }
     }
   });
 }
 
-// ==================== WEBSITE (Express) ====================
+// ==================== WEBSITE ====================
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -417,39 +414,23 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.post('/api/pair', async (req, res) => {
   const { number } = req.body;
   if (!number) return res.status(400).json({ error: "Number required" });
-
   try {
     if (!sock) await startBot();
-
-    if (isConnected) {
-      return res.json({ message: "Bot already connected ✅", connected: true });
-    }
-
-    if (sock.authState.creds.registered) {
-      return res.json({ message: "Session exists. Restarting...", connected: true });
-    }
-
+    if (isConnected) return res.json({ message: "Bot already connected ✅", connected: true });
+    if (sock.authState.creds.registered) return res.json({ message: "Session exists. Restarting...", connected: true });
     const cleanNumber = number.replace(/[^0-9]/g, '');
-    if (cleanNumber.length < 10) {
-      return res.status(400).json({ error: "Invalid number format. Use 947XXXXXXXX" });
-    }
-
+    if (cleanNumber.length < 10) return res.status(400).json({ error: "Invalid number format. Use 947XXXXXXXX" });
     const code = await sock.requestPairingCode(cleanNumber);
     pairingCode = code;
     console.log(`🔑 PAIR CODE for ${cleanNumber}: ${code}`);
-
     res.json({ code, number: cleanNumber });
   } catch (e) {
-    console.error("Pair error:", e);
     res.status(500).json({ error: e.message });
   }
 });
 
 app.get('/api/status', (req, res) => {
-  res.json({
-    connected: isConnected,
-    registered: sock?.authState?.creds?.registered || false
-  });
+  res.json({ connected: isConnected, registered: sock?.authState?.creds?.registered || false });
 });
 
 const PORT = process.env.PORT || 3000;
