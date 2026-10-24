@@ -55,27 +55,38 @@ async function logToChannel(sock, msg, from, sender) {
 
 // ==================== BOT STATE ====================
 let sock = null;
-let pairingCode = null;      // website එකට පෙන්නන්න
+let pairingCode = null;
 let isConnected = false;
 let botStarted = false;
 
 // ==================== START BOT ====================
 async function startBot() {
-  if (botStarted) return; // දෙපාරක් start වෙන්න එපා
+  if (botStarted) return;
   botStarted = true;
 
   await mongoose.connect(MONGO_URL);
   console.log("✅ MongoDB connected");
 
   const { state, saveCreds } = await useMultiFileAuthState('./session');
-  const { version } = await fetchLatestBaileysVersion();
+
+  // 👇 Version එක හරියට ගන්න + fallback
+  let version;
+  try {
+    const waVersion = await fetchLatestWaWebVersion();
+    version = waVersion.version || waVersion;
+    console.log(`📱 WA Version: ${Array.isArray(version) ? version.join('.') : version}`);
+  } catch (e) {
+    console.log("⚠️ Version fetch failed, using fallback:", e.message);
+    version = [2, 3000, 1042466098];
+  }
 
   sock = makeWASocket({
     version,
     auth: state,
     logger: pino({ level: 'silent' }),
     printQRInTerminal: false,
-    browser: ["Astron MINI", "Chrome", "1.0.0"]
+    // 👇 මේකයි fix එක - canonical browser label
+    browser: ["Mac OS", "Chrome", "14.4.1"]
   });
 
   sock.ev.on('creds.update', saveCreds);
@@ -97,6 +108,7 @@ async function startBot() {
     if (connection === 'close') {
       isConnected = false;
       const code = lastDisconnect?.error?.output?.statusCode;
+      console.log(`⚠️ Connection closed. Code: ${code}`);
       if (code !== DisconnectReason.loggedOut) {
         botStarted = false;
         setTimeout(() => startBot(), 3000);
@@ -339,27 +351,27 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Pairing code API — website එකෙන් number එක එව්වම code එක return කරනවා
+// Pairing code API
 app.post('/api/pair', async (req, res) => {
   const { number } = req.body;
   if (!number) return res.status(400).json({ error: "Number required" });
 
   try {
-    // Bot start නැත්නම් start කරන්න
     if (!sock) await startBot();
 
-    // Already connected නම්
     if (isConnected) {
       return res.json({ message: "Bot already connected ✅", connected: true });
     }
 
-    // Already registered නම් (session තියෙනවා)
     if (sock.authState.creds.registered) {
       return res.json({ message: "Session exists. Restarting...", connected: true });
     }
 
-    // Pair code generate කරන්න
     const cleanNumber = number.replace(/[^0-9]/g, '');
+    if (cleanNumber.length < 10) {
+      return res.status(400).json({ error: "Invalid number format. Use 947XXXXXXXX" });
+    }
+
     const code = await sock.requestPairingCode(cleanNumber);
     pairingCode = code;
     console.log(`🔑 PAIR CODE for ${cleanNumber}: ${code}`);
@@ -371,7 +383,7 @@ app.post('/api/pair', async (req, res) => {
   }
 });
 
-// Status API — website එකට connect වුණාද කියලා check කරන්න
+// Status API
 app.get('/api/status', (req, res) => {
   res.json({
     connected: isConnected,
@@ -382,5 +394,5 @@ app.get('/api/status', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => console.log(`🌐 Website running on port ${PORT}`));
 
-// Bot start කරන්න (pair code එක website එකෙන් එනකම් wait කරනවා)
+// Bot start
 startBot();
