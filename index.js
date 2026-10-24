@@ -1,4 +1,4 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestWaWebVersion, jidNormalizedUser } = require('ourin-baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestWaWebVersion, jidNormalizedUser } = require('@kelvdra/baileys');
 const mongoose = require('mongoose');
 const pino = require('pino');
 const express = require('express');
