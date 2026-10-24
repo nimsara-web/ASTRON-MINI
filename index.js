@@ -40,15 +40,18 @@ async function getSettings(jid) {
   return s;
 }
 
-// ==================== LOG TO CHANNEL (TEXT ONLY - SAFE) ====================
-async function logToChannel(sock, msg, from, sender) {
-  try {
-    const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || "[media]";
-    await sock.sendMessage(LOG_CHANNEL, {
-      text: `📥 *NEW MESSAGE*\n\n👤 From: ${sender}\n📍 Chat: ${from}\n💬 Text: ${text}\n\n_${WATERMARK}_`
-    });
-    // ⚠️ MEDIA FORWARD කරන්නේ නෑ - channel media crash bug එක නිසා
-  } catch (e) { console.log("Channel log error:", e.message); }
+// ==================== CHANNEL CONTEXT (forwarded from channel) ====================
+// මේකෙන් message එක channel එකකින් forward වුණා වගේ පෙන්නනවා
+function getChannelContext() {
+  return {
+    forwardingScore: 999,
+    isForwarded: true,
+    forwardedNewsletterMessageInfo: {
+      newsletterJid: LOG_CHANNEL,
+      newsletterName: BOT_NAME,
+      serverMessageId: -1
+    }
+  };
 }
 
 // ==================== SAFE SEND HELPER ====================
@@ -57,7 +60,6 @@ async function safeSend(sock, jid, content, options = {}) {
     return await sock.sendMessage(jid, content, options);
   } catch (e) {
     console.log(`⚠️ SafeSend failed to ${jid}:`, e.message);
-    // text fallback
     try {
       if (content.image || content.video || content.audio || content.document || content.sticker) {
         return await sock.sendMessage(jid, { text: content.caption || "📎 Media" }, options);
@@ -147,14 +149,6 @@ async function startBot() {
         const cached = msgCache.get(u.key.id);
         if (cached && cached.message) {
           const from = cached.key.remoteJid;
-          const sender = jidNormalizedUser(cached.key.participant || from);
-          // Channel එකට text log එක විතරයි
-          try {
-            await sock.sendMessage(LOG_CHANNEL, {
-              text: `🗑️ *DELETED MESSAGE RECOVERED*\n\n👤 From: ${sender}\n📍 Chat: ${from}\n\n_${WATERMARK}_`
-            });
-          } catch (e) { console.log("Anti-del log error:", e.message); }
-          // Chat එකට text + forward (safe)
           try {
             await sock.sendMessage(from, { text: `🗑️ *Deleted message recovered*\n\n_${WATERMARK}_` });
           } catch (e) {}
@@ -206,7 +200,8 @@ async function startBot() {
           } catch (e) { console.log("View-once error:", e.message); }
         }
 
-        if (!isStatus) await logToChannel(sock, msg, from, sender);
+        // ❌ logToChannel අයින් කළා - channel එකට auto message යන්නේ නෑ
+
         if (isStatus && settings.autoStatusView) {
           try { await sock.readMessages([msg.key]); } catch (e) {}
         }
@@ -231,7 +226,13 @@ async function startBot() {
 
         const cmd = text.slice(settings.prefix.length).trim().split(/ +/)[0].toLowerCase();
         const args = text.slice(settings.prefix.length).trim().split(/ +/).slice(1);
-        const reply = (t) => sock.sendMessage(from, { text: t + `\n\n_${WATERMARK}_` }, { quoted: msg });
+        
+        // 👇 REPLY වලට channel context එක දාන්න - channel link එක පෙන්නන්න
+        const reply = (t) => sock.sendMessage(from, { 
+          text: t + `\n\n_${WATERMARK}_`,
+          contextInfo: getChannelContext()
+        }, { quoted: msg });
+        
         const qCtx = msg.message.extendedTextMessage?.contextInfo;
         const quoted = qCtx?.quotedMessage;
 
@@ -250,27 +251,46 @@ async function startBot() {
 
         switch (cmd) {
           case 'menu': {
+            // 👇 ඔයා කියන commands විතරක්
             const menu = `╭─「 *${BOT_NAME}* 」\n│ 👤 Owner: ${OWNER_NAME}\n│ 📞 Help: ${HELP_NUMBER}\n╰────────────\n\n` +
-              `*⚙️ SETTINGS*\n• ${settings.prefix}autostatus on/off\n• ${settings.prefix}autoread on/off\n• ${settings.prefix}autocmdread on/off\n• ${settings.prefix}autoreply on/off\n• ${settings.prefix}mode private/public/group/inbox\n• ${settings.prefix}prefix <new>\n• ${settings.prefix}setautoreply <text>\n\n` +
+              `*⚙️ SETTINGS*\n• ${settings.prefix}autostatus on/off\n• ${settings.prefix}autoread on/off\n• ${settings.prefix}autocmdread on/off\n• ${settings.prefix}autoreply on/off\n• ${settings.prefix}mode private/public/group/inbox\n• ${settings.prefix}prefix <new>\n\n` +
               `*🛠️ TOOLS*\n• ${settings.prefix}ping\n• ${settings.prefix}alive\n• ${settings.prefix}owner\n• ${settings.prefix}settings\n• ${settings.prefix}remsg\n• ${settings.prefix}forward <jid/link/number>\n• ${settings.prefix}translate <lang>\n• ${settings.prefix}statussave\n• ${settings.prefix}save\n• ${settings.prefix}vv\n• 👀\n\n` +
-              `*🎨 UTILS*\n• ${settings.prefix}sticker\n• ${settings.prefix}ai <q>\n• ${settings.prefix}weather <city>\n• ${settings.prefix}news\n• ${settings.prefix}play <song>\n• ${settings.prefix}img <query>\n• ${settings.prefix}qr <text>\n• ${settings.prefix}short <url>\n• ${settings.prefix}calc <expr>\n• ${settings.prefix}pass <len>\n• ${settings.prefix}time\n• ${settings.prefix}info\n• ${settings.prefix}tagall <msg>\n• ${settings.prefix}groupinfo\n\n` +
               `_${WATERMARK}_`;
-            await safeSend(sock, from, { image: { url: MENU_IMAGE }, caption: menu }, { quoted: msg });
-            if (MENU_VOICE) await safeSend(sock, from, { audio: { url: MENU_VOICE }, mimetype: 'audio/mp4', ptt: true }, { quoted: msg });
+            await safeSend(sock, from, { 
+              image: { url: MENU_IMAGE }, 
+              caption: menu,
+              contextInfo: getChannelContext()
+            }, { quoted: msg });
+            if (MENU_VOICE) await safeSend(sock, from, { 
+              audio: { url: MENU_VOICE }, 
+              mimetype: 'audio/mp4', 
+              ptt: true,
+              contextInfo: getChannelContext()
+            }, { quoted: msg });
             break;
           }
           case 'ping': await reply(`🏓 Pong! ${Date.now() - msg.messageTimestamp * 1000}ms`); break;
           case 'alive': {
             const caption = `✨ *${BOT_NAME}* is Alive!\n\n👤 Owner: ${OWNER_NAME}\n📞 Help: ${HELP_NUMBER}\n⚡ Status: Online\n\n_${WATERMARK}_`;
-            await safeSend(sock, from, { image: { url: CONNECT_IMAGE }, caption }, { quoted: msg });
-            if (CONNECT_VOICE) await safeSend(sock, from, { audio: { url: CONNECT_VOICE }, mimetype: 'audio/mp4', ptt: true }, { quoted: msg });
+            await safeSend(sock, from, { 
+              image: { url: CONNECT_IMAGE }, 
+              caption,
+              contextInfo: getChannelContext()
+            }, { quoted: msg });
+            if (CONNECT_VOICE) await safeSend(sock, from, { 
+              audio: { url: CONNECT_VOICE }, 
+              mimetype: 'audio/mp4', 
+              ptt: true,
+              contextInfo: getChannelContext()
+            }, { quoted: msg });
             break;
           }
           case 'owner': {
             const vcard = `BEGIN:VCARD\nVERSION:3.0\nFN:${OWNER_NAME}\nTEL;type=CELL;type=VOICE;waid=${OWNER_NUMBER}:+${OWNER_NUMBER}\nEND:VCARD`;
             await safeSend(sock, from, {
               contacts: { displayName: OWNER_NAME, contacts: [{ vcard }] },
-              caption: `👤 *Owner:* ${OWNER_NAME}\n📞 ${HELP_NUMBER}\n\n_${WATERMARK}_`
+              caption: `👤 *Owner:* ${OWNER_NAME}\n📞 ${HELP_NUMBER}\n\n_${WATERMARK}_`,
+              contextInfo: getChannelContext()
             }, { quoted: msg });
             break;
           }
@@ -293,11 +313,6 @@ async function startBot() {
           case 'autoread': settings.autoRead = args[0] === 'on'; await settings.save(); await reply(`✅ Auto read: ${args[0]}`); break;
           case 'autocmdread': settings.autoCmdRead = args[0] === 'on'; await settings.save(); await reply(`✅ Auto cmd read: ${args[0]}`); break;
           case 'autoreply': settings.autoReply = args[0] === 'on'; await settings.save(); await reply(`✅ Auto reply: ${args[0]}`); break;
-          case 'setautoreply':
-            if (!args.length) return reply("❌ Usage: .setautoreply <text>");
-            settings.autoReplyText = args.join(' '); await settings.save();
-            await reply(`✅ Auto reply text set`);
-            break;
           case 'remsg': {
             if (!quoted) return reply("❌ Deleted message එකකට reply කරලා .remsg");
             const qType = Object.keys(quoted)[0];
@@ -371,6 +386,7 @@ async function startBot() {
             } catch (e) { await reply(`❌ Failed: ${e.message}`); }
             break;
           }
+          // 👇 commands.js එකේ තියෙන commands
           case 'sticker': await commands.sticker(sock, msg, from, quoted, reply); break;
           case 'ai': await commands.ai(sock, msg, from, args, reply); break;
           case 'weather': await commands.weather(sock, msg, from, args, reply); break;
