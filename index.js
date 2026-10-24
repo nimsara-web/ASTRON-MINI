@@ -14,10 +14,10 @@ const HELP_NUMBER = "0784280074";
 const WATERMARK = "Created By Nimsara";
 const LOG_CHANNEL = "120363362308230584@newsletter";
 // 👇 ඔයාගේ image/voice URLs මෙතන දාන්න
-const CONNECT_IMAGE = "YOUR_IMAGE_URL_HERE";
-const CONNECT_VOICE = "YOUR_VOICE_URL_HERE";
-const MENU_IMAGE = "YOUR_MENU_IMAGE_URL_HERE";
-const MENU_VOICE = "YOUR_MENU_VOICE_URL_HERE";
+const CONNECT_IMAGE = "https://raw.githubusercontent.com/nimsara-web/Im-Nim/refs/heads/main/Data/New/WhatsApp%20Image%202026-09-24%20at%201.11.32%20AM.jpeg";
+const CONNECT_VOICE = "https://github.com/nimsara-web/Im-Nim/raw/refs/heads/main/Nimoradata/0923.MP3";
+const MENU_IMAGE = "https://raw.githubusercontent.com/nimsara-web/Im-Nim/refs/heads/main/Data/New/WhatsApp%20Image%202026-09-24%20at%201.11.32%20AM.jpeg";
+const MENU_VOICE = "https://github.com/nimsara-web/Im-Nim/raw/refs/heads/main/Nimoradata/0923.MP3";
 
 // ==================== MESSAGE CACHE ====================
 const msgCache = new Map();
