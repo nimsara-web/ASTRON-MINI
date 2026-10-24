@@ -68,7 +68,7 @@ async function startBot() {
   console.log("✅ MongoDB connected");
 
   const { state, saveCreds } = await useMultiFileAuthState('./session');
-  const { version } = await fetchLatestWaWebVersion();
+  const { version } = await fetchLatestBaileysVersion();
 
   sock = makeWASocket({
     version,
